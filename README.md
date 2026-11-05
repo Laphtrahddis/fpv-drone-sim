@@ -19,6 +19,7 @@ No wrangler or API tokens are needed.
 | Pitch | right stick ↕ | ↑ / ↓ |
 | Roll | right stick ↔ | ← / → |
 | Reset | A | R |
+| Angle / Acro | X | M |
 | Chase cam | Y | C |
 | Menu | START | Esc / P |
 
@@ -27,7 +28,7 @@ Use **Controller Test** in the menu to check that your sticks are mapped correct
 ## Files
 - `js/config.js`: settings (saved in localStorage) + physics constants
 - `js/input.js`: gamepad + keyboard → 4 channels (deadzone, expo, invert)
-- `js/drone.js`: quadcopter physics (Angle mode)
+- `js/drone.js`: quadcopter physics (Angle + Acro, Betaflight-style rates)
 - `js/world.js`: noise terrain + trees, collision
 - `js/controllerTest.js`: calibration screen
 - `js/main.js`: scene, loop, camera, menus

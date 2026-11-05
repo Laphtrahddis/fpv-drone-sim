@@ -2,11 +2,16 @@
 const KEY = 'fpv-settings-v1';
 
 const defaults = {
+  defaultMode: 'ACRO',             // 'ACRO' (real FPV: flips, rolls) or 'ANGLE' (self-levels)
   throttleMode: 'center',          // 'center' = stick center is hover, 'full' = bottom is 0%
   deadzone: 0.05,
-  expo: 0.3,
-  rates: { pitch: 500, roll: 500, yaw: 250 },   // deg/s (yaw used now, pitch/roll for Acro later)
-  maxAngle: 45,                    // Angle mode tilt limit, degrees
+  // Betaflight "Actual" rates per axis: center sensitivity (deg/s), max rate (deg/s), expo
+  rates: {
+    pitch: { center: 70, max: 600, expo: 0.5 },
+    roll:  { center: 70, max: 600, expo: 0.5 },
+    yaw:   { center: 70, max: 400, expo: 0.4 },
+  },
+  maxAngle: 60,                    // Angle mode tilt limit
   invert: { throttle: false, yaw: false, pitch: false, roll: false },
   // Which gamepad axis drives each channel. s = sign so that UP / RIGHT is +1.
   // Defaults match the browser "standard" (XInput) layout.
@@ -20,7 +25,8 @@ function load() {
   const s = structuredClone(defaults);
   try {
     const saved = JSON.parse(localStorage.getItem(KEY)) || {};
-    for (const k in saved) s[k] = typeof s[k] === 'object' ? { ...s[k], ...saved[k] } : saved[k];
+    for (const k in saved) if (k in s && k !== 'rates') s[k] = typeof s[k] === 'object' ? { ...s[k], ...saved[k] } : saved[k];
+    if (saved.rates?.pitch?.max) s.rates = saved.rates; // ignore the old Phase 1 rate format
   } catch {}
   return s;
 }
@@ -28,13 +34,20 @@ function load() {
 export const settings = load();
 export function saveSettings() { try { localStorage.setItem(KEY, JSON.stringify(settings)); } catch {} }
 
-const mass = 0.65; // kg, a typical 5" freestyle quad
+// A typical 5" freestyle quad: ~650g, thrust-to-weight ~9:1, top speed ~170 km/h.
+const mass = 0.65, gravity = 9.81, tw = 9;
 export const PHYS = {
-  mass,
-  gravity: 9.81,
-  maxThrust: 4.5 * mass * 9.81, // N, thrust-to-weight 4.5:1 (real 5" quads are 6-10:1)
-  linDrag: 0.08,                // linear air drag
-  quadDrag: 0.025,              // quadratic air drag (limits top speed to ~130 km/h)
-  angleResponse: 9,             // how fast Angle mode reaches the target tilt
+  mass, gravity,
+  maxThrust: tw * mass * gravity, // N, all 4 motors at 100%
+  idle: 0.05,                     // motors keep spinning at 5% (Betaflight air mode)
+  motorLag: 0.035,                // s, motor spool-up time constant
+  rateLag: 0.03,                  // s, how quickly the rate loop reaches the requested rotation
+  angleGain: 7,                   // Angle mode: rad/s of correction per rad of tilt error
+  propSpeed: 70,                  // m/s of air through the props at which thrust drops to 0
+  dragUp: 0.03,                   // quadratic drag along UP (flat side: big)
+  dragFlat: 0.007,                // quadratic drag in the prop plane (edge-on: small)
+  linDrag: 0.03,
+  turbulence: 0.15,
 };
-PHYS.hoverThrottle = (PHYS.mass * PHYS.gravity) / PHYS.maxThrust;
+// thrust ~ motor^2, so hover throttle is sqrt(weight / max thrust), adjusted for idle
+PHYS.hoverThrottle = (Math.sqrt(1 / tw) - PHYS.idle) / (1 - PHYS.idle);

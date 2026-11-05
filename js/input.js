@@ -26,12 +26,12 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => keys.delete(e.code));
 addEventListener('blur', () => keys.clear());
 
-// Deadzone (rescaled so output still reaches 1), then expo: soft center, full at the edges.
-function shape(v, expo) {
+// Deadzone, rescaled so the output still reaches 1. (Expo lives in the rates, see drone.js.)
+function shape(v) {
   const dz = settings.deadzone, a = Math.abs(v);
   if (a < dz) return 0;
   v = Math.sign(v) * Math.min(1, (a - dz) / (1 - dz));
-  return (1 - expo) * v + expo * v * v * v;
+  return v;
 }
 
 export function rawChannel(name) {
@@ -64,7 +64,7 @@ export function updateInput(dt) {
   // --- merge: whichever source is deflected more wins ---
   for (const ch in sticks) {
     let p = pad.connected ? rawChannel(ch) : 0;
-    p = shape(p, ch === 'throttle' ? 0 : settings.expo);
+    p = shape(p);
     let v = Math.abs(p) > Math.abs(kb[ch]) ? p : kb[ch];
     if (ch === 'throttle' && settings.throttleMode === 'full') {
       if (keys.has('KeyW') || keys.has('KeyS')) kbThrottleActive = true;

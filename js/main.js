@@ -15,7 +15,7 @@ const renderer = new THREE.WebGLRenderer({ canvas: $('c'), antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(SKY);
-scene.fog = new THREE.Fog(SKY, 150, 850);
+scene.fog = new THREE.Fog(SKY, 120, 760);
 scene.add(new THREE.HemisphereLight(0xdfefff, 0x445533, 1.6));
 const sun = new THREE.DirectionalLight(0xffffff, 1.6);
 sun.position.set(0.5, 1, 0.3);
@@ -96,6 +96,10 @@ function handleEvents() {
       if (ev === 'KeyR' || ev === 'pad0') respawn();
       if (ev === 'Escape' || ev === 'KeyP' || ev === 'pad9') setState('pause');
       if (ev === 'KeyC' || ev === 'pad3') { settings.chase = !settings.chase; saveSettings(); }
+      if (ev === 'KeyM' || ev === 'pad2') {
+        drone.mode = drone.mode === 'ANGLE' ? 'ACRO' : 'ANGLE';
+        settings.defaultMode = drone.mode; saveSettings();
+      }
     } else if (state === 'test') {
       // gamepad buttons are being tested here, so only keyboard Esc leaves
       if (ev === 'Escape') ACTIONS.back();
@@ -124,6 +128,10 @@ function updateCamera(dt) {
     uptiltQ.setFromAxisAngle(_v.set(1, 0, 0), settings.uptilt * DEG);
     camera.quaternion.copy(drone.q).multiply(uptiltQ);
     camera.position.copy(drone.pos);
+    // subtle shake from motor vibration + wind, stronger with throttle and speed
+    const t = performance.now() / 1000, amp = 0.0015 + 0.003 * drone.motor + 0.004 * Math.min(1, drone.speed / 40);
+    camera.rotateX(amp * (Math.sin(t * 53) + Math.sin(t * 31.7)));
+    camera.rotateZ(amp * (Math.sin(t * 47.3) + Math.sin(t * 23.1)));
   }
 }
 
@@ -134,7 +142,7 @@ function updateHud(dt) {
   hudT = 0;
   const alt = drone.pos.y - world.groundAt(drone.pos.x, drone.pos.z) - 0.15;
   $('hud').textContent =
-    `ANGLE   THR ${String(Math.round(drone.throttle * 100)).padStart(3)}%\n` +
+    `${drone.mode.padEnd(6)}  THR ${String(Math.round(drone.throttle * 100)).padStart(3)}%\n` +
     `${String(Math.round(drone.speed * 3.6)).padStart(3)} KM/H  ALT ${alt.toFixed(1)} M` +
     (settings.chase ? '\nCHASE CAM' : '');
 }
