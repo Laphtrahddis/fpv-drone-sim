@@ -29,7 +29,7 @@ export class Drone {
     this.w = new THREE.Vector3();     // body angular velocity (rad/s): x = pitch, y = yaw, z = roll
     this.motor = 0;                   // actual motor output 0..1 (lags behind throttle)
     this.throttle = 0;                // commanded throttle 0..1
-    this.mode = settings.defaultMode;
+    this.mode = settings.startMode;
     this.crashed = false;
     this.armed = false;
     this.battery = 1;                 // 0..1

@@ -13,7 +13,7 @@ const ITEMS = [
   ['osd', 'Show OSD', 'bool'],
   ['volume', 'Volume', 0, 1, 0.05],
   ['mute', 'Mute', 'bool'],
-  ['defaultMode', 'Flight mode', ['ACRO', 'ANGLE']],
+  ['startMode', 'Start flights in mode', ['ACRO', 'ANGLE']],
   ['throttleMode', 'Throttle mapping', ['center', 'full']],
   ['rates.roll.max', 'Roll rate (°/s)', 200, 1200, 10],
   ['rates.pitch.max', 'Pitch rate (°/s)', 200, 1200, 10],

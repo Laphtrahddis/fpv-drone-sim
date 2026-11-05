@@ -76,14 +76,16 @@ function setState(s) {
   if (first) first.focus();
 }
 
-function applySettings() {
-  resize();
-  drone.mode = settings.defaultMode;
+function applySettings() { resize(); }
+
+let flashT = 0;
+function flash(text, secs = 2) {
+  $('msg').textContent = text; $('msg').classList.remove('hidden'); flashT = secs;
 }
 
 function respawn() {
   drone.reset(SPAWN); resetInput(); crashTimer = 0;
-  drone.mode = settings.defaultMode;
+  drone.mode = settings.startMode;
   $('msg').classList.add('hidden');
 }
 
@@ -126,8 +128,9 @@ function handleEvents() {
       if (ev === 'KeyC' || ev === 'pad3') { settings.chase = !settings.chase; saveSettings(); }
       if (ev === 'KeyV' || ev === 'pad8') { settings.video = !settings.video; saveSettings(); }
       if (ev === 'KeyM' || ev === 'pad2') {
+        // only for this flight; the start mode is chosen in Settings
         drone.mode = drone.mode === 'ANGLE' ? 'ACRO' : 'ANGLE';
-        settings.defaultMode = drone.mode; saveSettings();
+        flash(drone.mode === 'ACRO' ? 'ACRO MODE: flips & rolls, no self-level' : 'ANGLE MODE: self-levelling, no flips');
       }
     } else if (state === 'test') {
       // gamepad buttons are being tested here, so only keyboard Esc leaves
@@ -189,6 +192,7 @@ function frame(now) {
   const home = Math.hypot(drone.pos.x - SPAWN.x, drone.pos.z - SPAWN.z);
   crashStatic = Math.max(0, crashStatic - dt * 1.2);
   armHint = Math.max(0, armHint - dt);
+  if (flashT > 0 && (flashT -= dt) <= 0 && !drone.crashed) $('msg').classList.add('hidden');
   const noise = signalNoise(alt, home);
 
   if (state === 'fly') {

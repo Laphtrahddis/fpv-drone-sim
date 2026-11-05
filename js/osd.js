@@ -22,7 +22,7 @@ export function updateOsd(dt, d, info) {
   $('osdBL').textContent = `${pad(Math.round(d.speed * 3.6), 3)} KM/H\nALT ${info.alt.toFixed(1)} M`;
   $('osdBR').textContent = `${d.mode}\nHOME ${Math.round(info.home)} M`;
   let warn = '';
-  if (!d.armed) warn = info.armHint ? 'THROTTLE DOWN TO ARM' : 'DISARMED';
+  if (!d.armed) warn = info.armHint ? 'THROTTLE ALL THE WAY DOWN, THEN PRESS B' : 'DISARMED\nHOLD LEFT STICK DOWN + PRESS B (SPACE) TO ARM';
   else if (d.battery <= 0) warn = 'BATTERY EMPTY';
   else if (low) warn = blink ? 'LOW BATTERY' : '';
   $('osdWarn').textContent = warn;

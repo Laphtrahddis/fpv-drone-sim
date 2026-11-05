@@ -2,7 +2,7 @@
 const KEY = 'fpv-settings-v1';
 
 const defaults = {
-  defaultMode: 'ACRO',             // 'ACRO' (real FPV: flips, rolls) or 'ANGLE' (self-levels)
+  startMode: 'ACRO',               // mode each flight starts in: 'ACRO' (real FPV: flips) or 'ANGLE' (self-levels)
   throttleMode: 'center',          // 'center' = stick center is hover, 'full' = bottom is 0%
   deadzone: 0.05,
   // Betaflight "Actual" rates per axis: center sensitivity (deg/s), max rate (deg/s), expo
