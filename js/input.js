@@ -13,6 +13,7 @@ const KEYMAP = {
   pitch: ['ArrowUp', 'ArrowDown'], roll: ['ArrowRight', 'ArrowLeft'],
 };
 let prevButtons = [];
+let navDir = '', navT = 0; // menu navigation from any stick, with auto-repeat
 let kbThrottleActive = false; // full-range mode: keyboard owns throttle until the pad stick moves
 let prevPadThr = 0;
 
@@ -48,6 +49,16 @@ export function updateInput(dt) {
   pad.buttons = gp ? gp.buttons.map(b => b.value) : [];
   pad.buttons.forEach((v, i) => { if (v > 0.5 && !(prevButtons[i] > 0.5)) events.push('pad' + i); });
   prevButtons = pad.buttons;
+
+  // menu navigation: any stick (or D-pad buttons, handled as pad12-15) -> navUp/Down/Left/Right
+  let dir = '';
+  for (let i = 0; i + 1 < Math.min(pad.axes.length, 4); i += 2) {
+    const x = pad.axes[i], y = pad.axes[i + 1];
+    if (Math.abs(y) > 0.6 && Math.abs(y) >= Math.abs(x)) dir = y < 0 ? 'navUp' : 'navDown';
+    else if (Math.abs(x) > 0.6) dir = x < 0 ? 'navLeft' : 'navRight';
+  }
+  if (dir && (dir !== navDir || (navT -= dt) <= 0)) { events.push(dir); navT = dir !== navDir ? 0.4 : 0.15; }
+  navDir = dir;
 
   // --- keyboard: ramp smoothly instead of jumping 0 -> 1 ---
   for (const ch in KEYMAP) {

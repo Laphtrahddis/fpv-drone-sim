@@ -3,6 +3,7 @@ import { settings, saveSettings } from './config.js';
 
 // [path in settings, label, min/max/step | 'bool' | [choices]]
 const ITEMS = [
+  ['quality', 'Graphics quality', ['low', 'medium', 'high']],
   ['uptilt', 'Camera uptilt (°)', 0, 45, 1],
   ['fov', 'Field of view (°)', 90, 130, 1],
   ['shake', 'Camera shake', 0, 1, 0.05],

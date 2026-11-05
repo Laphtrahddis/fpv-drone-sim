@@ -32,7 +32,7 @@ Use **Controller Test** in the menu to check that your sticks are mapped correct
 - `js/config.js`: settings (saved in localStorage) + physics constants
 - `js/input.js`: gamepad + keyboard → 4 channels (deadzone, expo, invert)
 - `js/drone.js`: quadcopter physics (Angle + Acro, Betaflight-style rates)
-- `js/world.js`: noise terrain + trees, collision
+- `js/world.js`: infinite chunked seeded world: terrain, forests, city blocks, tunnels, arches, ring gates, collision
 - `js/audio.js`: synthesized motor / prop / wind / crash sound (Web Audio)
 - `js/osd.js`: goggle-style on-screen display
 - `js/video.js`: analog video + fisheye shader (one fullscreen pass)

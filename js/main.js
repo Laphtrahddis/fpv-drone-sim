@@ -20,18 +20,24 @@ const SKY = 0x9cc4e4;
 
 // --- renderer / scene ---
 const renderer = new THREE.WebGLRenderer({ canvas: $('c'), antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 const video = new Video(renderer);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(SKY);
-scene.fog = new THREE.Fog(SKY, 120, 760);
+scene.fog = new THREE.Fog(SKY, 150, 560);
 scene.add(new THREE.HemisphereLight(0xdfefff, 0x445533, 1.6));
 const sun = new THREE.DirectionalLight(0xffffff, 1.6);
 sun.position.set(0.5, 1, 0.3);
 scene.add(sun);
 
 const camera = new THREE.PerspectiveCamera(90, 1, 0.05, 1000);
+// graphics quality: view distance (chunks) + resolution
+const QUALITY = { low: [2, 1], medium: [3, 1.25], high: [4, 2] };
 function resize() {
+  const [chunks, pr] = QUALITY[settings.quality] || QUALITY.medium;
+  world.radius = chunks;
+  scene.fog.far = chunks * 200 - 40; scene.fog.near = scene.fog.far * 0.3;
+  camera.far = scene.fog.far + 20;
+  renderer.setPixelRatio(Math.min(devicePixelRatio, pr));
   renderer.setSize(innerWidth, innerHeight, false);
   const s = renderer.getDrawingBufferSize(new THREE.Vector2());
   video.setSize(s.x, s.y);
@@ -40,10 +46,10 @@ function resize() {
   camera.fov = 2 * Math.atan(Math.tan(settings.fov * DEG / 2) / camera.aspect) / DEG;
   camera.updateProjectionMatrix();
 }
+const world = new World(scene, 1);
 addEventListener('resize', resize);
 resize();
 
-const world = new World(scene, 1);
 const drone = new Drone();
 const SPAWN = new THREE.Vector3(0, world.groundAt(0, 0) + 0.15, 0);
 
@@ -84,6 +90,7 @@ function flash(text, secs = 2) {
 }
 
 function respawn() {
+  world.update(SPAWN.x, SPAWN.z, true);
   drone.reset(SPAWN); resetInput(); crashTimer = 0;
   drone.mode = settings.startMode;
   $('msg').classList.add('hidden');
@@ -108,11 +115,13 @@ function menuNav(ev) {
   const items = [...overlays[state].querySelectorAll('button, input')];
   const i = items.indexOf(document.activeElement), el = items[i];
   const focus = j => { items[j].focus(); items[j].scrollIntoView({ block: 'nearest' }); };
-  if (ev === 'pad12' || ev === 'ArrowUp') focus((i - 1 + items.length) % items.length);
-  if (ev === 'pad13' || ev === 'ArrowDown') focus((i + 1) % items.length);
+  const up = ev === 'pad12' || ev === 'navUp' || ev === 'ArrowUp', down = ev === 'pad13' || ev === 'navDown' || ev === 'ArrowDown';
+  const left = ev === 'pad14' || ev === 'navLeft', right = ev === 'pad15' || ev === 'navRight';
+  if (up) focus((i - 1 + items.length) % items.length);
+  if (down) focus((i + 1) % items.length);
   if (ev === 'pad0') (el || items[0]).click();
-  if (el?.type === 'range' && (ev === 'pad14' || ev === 'pad15')) {
-    ev === 'pad14' ? el.stepDown() : el.stepUp();
+  if (el?.type === 'range' && (left || right)) {
+    left ? el.stepDown() : el.stepUp();
     el.dispatchEvent(new Event('input', { bubbles: true }));
   }
 }
@@ -133,8 +142,8 @@ function handleEvents() {
         flash(drone.mode === 'ACRO' ? 'ACRO MODE: flips & rolls, no self-level' : 'ANGLE MODE: self-levelling, no flips');
       }
     } else if (state === 'test') {
-      // gamepad buttons are being tested here, so only keyboard Esc leaves
-      if (ev === 'Escape') ACTIONS.back();
+      // gamepad buttons are being tested here, so only START (or Esc) leaves
+      if (ev === 'Escape' || ev === 'pad9') ACTIONS.back();
     } else if (state === 'pause' && (ev === 'Escape' || ev === 'KeyP' || ev === 'pad9' || ev === 'pad1')) setState('fly');
     else if (state === 'settings' && (ev === 'Escape' || ev === 'pad1')) ACTIONS.back();
     else menuNav(ev);

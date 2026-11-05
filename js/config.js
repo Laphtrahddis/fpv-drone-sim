@@ -19,6 +19,7 @@ const defaults = {
   axes: { throttle: { i: 1, s: -1 }, yaw: { i: 0, s: 1 }, pitch: { i: 3, s: -1 }, roll: { i: 2, s: 1 } },
   uptilt: 25,                      // camera uptilt, degrees
   fov: 115,                        // horizontal field of view, degrees
+  quality: 'medium',               // graphics: low | medium | high
   chase: false,
   shake: 0.35,                     // camera shake multiplier
   fisheye: false,

@@ -132,7 +132,8 @@ export class Drone {
       if (!live) this.w.set(0, 0, 0);
       if (_up.y < 0.98 && (!live || _up.y < 0.7 || this.throttle < PHYS.hoverThrottle)) this.q.slerp(_q.setFromEuler(_e.set(0, this.heading, 0)), 1 - Math.exp(-10 * dt)); // settle flat on its legs
     }
-    if (world.hit(this.pos, RADIUS) === 'tree') this.crash('tree');
+    const hit = world.hit(this.pos, RADIUS);
+    if (hit && hit !== 'ground') this.crash(hit);
   }
 
   crash(what) { this.crashed = what; this.armed = false; this.vel.set(0, 0, 0); this.w.set(0, 0, 0); }
