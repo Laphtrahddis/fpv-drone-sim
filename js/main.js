@@ -6,6 +6,9 @@ import { Drone } from './drone.js';
 import { World } from './world.js';
 import { updateControllerTest } from './controllerTest.js';
 import { initAudio, updateAudio, crashSound, audioReady } from './audio.js';
+import { Video } from './video.js';
+import { updateOsd } from './osd.js';
+import { buildSettings } from './settingsMenu.js';
 
 // audio may only start after a user gesture
 addEventListener('pointerdown', initAudio);
@@ -18,6 +21,7 @@ const SKY = 0x9cc4e4;
 // --- renderer / scene ---
 const renderer = new THREE.WebGLRenderer({ canvas: $('c'), antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+const video = new Video(renderer);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(SKY);
 scene.fog = new THREE.Fog(SKY, 120, 760);
@@ -29,6 +33,8 @@ scene.add(sun);
 const camera = new THREE.PerspectiveCamera(90, 1, 0.05, 1000);
 function resize() {
   renderer.setSize(innerWidth, innerHeight, false);
+  const s = renderer.getDrawingBufferSize(new THREE.Vector2());
+  video.setSize(s.x, s.y);
   camera.aspect = innerWidth / innerHeight;
   // settings.fov is horizontal (how FPV cameras are rated); Three.js wants vertical
   camera.fov = 2 * Math.atan(Math.tan(settings.fov * DEG / 2) / camera.aspect) / DEG;
@@ -54,22 +60,30 @@ for (const [x, z] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
 scene.add(model);
 
 // --- game state & menus ---
-let state = 'menu';           // 'menu' | 'fly' | 'pause' | 'test'
-let testReturn = 'menu';
-let crashTimer = 0;
-const overlays = { menu: $('menu'), pause: $('pause'), test: $('test') };
+let state = 'menu';           // 'menu' | 'fly' | 'pause' | 'test' | 'settings'
+let backTo = 'menu';
+let crashTimer = 0, crashStatic = 0, armHint = 0;
+const overlays = { menu: $('menu'), pause: $('pause'), test: $('test'), settings: $('settings') };
 
 function setState(s) {
-  if (s === 'test') testReturn = state;
+  if (s === 'test' || s === 'settings') backTo = state;
+  if (s === 'settings') buildSettings($('settingsList'), applySettings);
   state = s;
+  if (s === 'fly') document.activeElement?.blur(); // otherwise Space would "click" the last menu button
   for (const k in overlays) overlays[k].classList.toggle('hidden', k !== s);
-  $('hud').classList.toggle('hidden', s !== 'fly');
-  const first = overlays[s]?.querySelector('button');
+  $('osd').classList.toggle('hidden', s !== 'fly' || !settings.osd);
+  const first = overlays[s]?.querySelector('button, input');
   if (first) first.focus();
+}
+
+function applySettings() {
+  resize();
+  drone.mode = settings.defaultMode;
 }
 
 function respawn() {
   drone.reset(SPAWN); resetInput(); crashTimer = 0;
+  drone.mode = settings.defaultMode;
   $('msg').classList.add('hidden');
 }
 
@@ -78,7 +92,8 @@ const ACTIONS = {
   resume: () => setState('fly'),
   restart: () => { respawn(); setState('fly'); },
   test: () => setState('test'),
-  back: () => setState(testReturn),
+  settings: () => setState('settings'),
+  back: () => setState(backTo),
   quit: () => setState('menu'),
 };
 document.addEventListener('click', e => {
@@ -86,13 +101,18 @@ document.addEventListener('click', e => {
   if (act) ACTIONS[act]();
 });
 
-// Menu navigation with D-pad / keyboard; A or Enter presses the focused button.
+// Menu navigation with D-pad / keyboard. A presses the focused item, D-pad left/right moves sliders.
 function menuNav(ev) {
-  const btns = [...overlays[state].querySelectorAll('button')];
-  const i = btns.indexOf(document.activeElement);
-  if (ev === 'pad12' || ev === 'ArrowUp') btns[(i - 1 + btns.length) % btns.length].focus();
-  if (ev === 'pad13' || ev === 'ArrowDown') btns[(i + 1) % btns.length].focus();
-  if (ev === 'pad0') (btns[i] || btns[0]).click();
+  const items = [...overlays[state].querySelectorAll('button, input')];
+  const i = items.indexOf(document.activeElement), el = items[i];
+  const focus = j => { items[j].focus(); items[j].scrollIntoView({ block: 'nearest' }); };
+  if (ev === 'pad12' || ev === 'ArrowUp') focus((i - 1 + items.length) % items.length);
+  if (ev === 'pad13' || ev === 'ArrowDown') focus((i + 1) % items.length);
+  if (ev === 'pad0') (el || items[0]).click();
+  if (el?.type === 'range' && (ev === 'pad14' || ev === 'pad15')) {
+    ev === 'pad14' ? el.stepDown() : el.stepUp();
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
 }
 
 function handleEvents() {
@@ -101,8 +121,10 @@ function handleEvents() {
     if (ev === 'KeyN') { settings.mute = !settings.mute; saveSettings(); }
     if (state === 'fly') {
       if (ev === 'KeyR' || ev === 'pad0') respawn();
+      if (ev === 'Space' || ev === 'pad1') { if (!drone.toggleArm(sticks)) armHint = 2; }
       if (ev === 'Escape' || ev === 'KeyP' || ev === 'pad9') setState('pause');
       if (ev === 'KeyC' || ev === 'pad3') { settings.chase = !settings.chase; saveSettings(); }
+      if (ev === 'KeyV' || ev === 'pad8') { settings.video = !settings.video; saveSettings(); }
       if (ev === 'KeyM' || ev === 'pad2') {
         drone.mode = drone.mode === 'ANGLE' ? 'ACRO' : 'ANGLE';
         settings.defaultMode = drone.mode; saveSettings();
@@ -110,16 +132,15 @@ function handleEvents() {
     } else if (state === 'test') {
       // gamepad buttons are being tested here, so only keyboard Esc leaves
       if (ev === 'Escape') ACTIONS.back();
-    } else {
-      if (state === 'pause' && (ev === 'Escape' || ev === 'KeyP' || ev === 'pad9' || ev === 'pad1')) setState('fly');
-      else menuNav(ev);
-    }
+    } else if (state === 'pause' && (ev === 'Escape' || ev === 'KeyP' || ev === 'pad9' || ev === 'pad1')) setState('fly');
+    else if (state === 'settings' && (ev === 'Escape' || ev === 'pad1')) ACTIONS.back();
+    else menuNav(ev);
   }
   events.length = 0;
 }
 
 // --- camera ---
-const uptiltQ = new THREE.Quaternion(), _v = new THREE.Vector3(), _q = new THREE.Quaternion();
+const uptiltQ = new THREE.Quaternion(), _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _e = new THREE.Euler();
 function updateCamera(dt) {
   model.position.copy(drone.pos);
   model.quaternion.copy(drone.q);
@@ -135,23 +156,19 @@ function updateCamera(dt) {
     uptiltQ.setFromAxisAngle(_v.set(1, 0, 0), settings.uptilt * DEG);
     camera.quaternion.copy(drone.q).multiply(uptiltQ);
     camera.position.copy(drone.pos);
-    // subtle shake from motor vibration + wind, stronger with throttle and speed
-    const t = performance.now() / 1000, amp = 0.0015 + 0.003 * drone.motor + 0.004 * Math.min(1, drone.speed / 40);
+    // shake from motor vibration + wind, stronger with throttle and speed
+    const t = performance.now() / 1000;
+    const amp = settings.shake * (0.0015 + 0.003 * drone.motor + 0.004 * Math.min(1, drone.speed / 40));
     camera.rotateX(amp * (Math.sin(t * 53) + Math.sin(t * 31.7)));
     camera.rotateZ(amp * (Math.sin(t * 47.3) + Math.sin(t * 23.1)));
   }
 }
 
-// --- HUD (Phase 2 replaces this with a proper goggle OSD) ---
-let hudT = 0;
-function updateHud(dt) {
-  if ((hudT += dt) < 0.1) return;
-  hudT = 0;
-  const alt = drone.pos.y - world.groundAt(drone.pos.x, drone.pos.z) - 0.15;
-  $('hud').textContent =
-    `${drone.mode.padEnd(6)}  THR ${String(Math.round(drone.throttle * 100)).padStart(3)}%\n` +
-    `${String(Math.round(drone.speed * 3.6)).padStart(3)} KM/H  ALT ${alt.toFixed(1)} M` +
-    (settings.chase ? '\nCHASE CAM' : '');
+// Analog signal quality: worse far from home and right next to the ground (like real 5.8GHz video)
+function signalNoise(alt, home) {
+  const range = Math.max(0, (home - 500) / 1500);
+  const ground = Math.max(0, 1 - alt / 1.5) * 0.25 * (drone.armed ? 1 : 0);
+  return Math.min(1, 0.03 + range * range * 0.8 + ground + crashStatic);
 }
 
 // --- main loop (physics at a fixed 120 Hz for stable, frame-rate independent flight) ---
@@ -168,19 +185,33 @@ function frame(now) {
     (!audioReady() ? '  |  🔇 click or press a key for sound' : settings.mute ? '  |  🔇 muted (N)' : '');
   if (state === 'test') updateControllerTest();
 
+  const alt = drone.pos.y - world.groundAt(drone.pos.x, drone.pos.z) - 0.15;
+  const home = Math.hypot(drone.pos.x - SPAWN.x, drone.pos.z - SPAWN.z);
+  crashStatic = Math.max(0, crashStatic - dt * 1.2);
+  armHint = Math.max(0, armHint - dt);
+  const noise = signalNoise(alt, home);
+
   if (state === 'fly') {
     acc += dt;
     while (acc >= STEP) { drone.step(STEP, sticks, world); acc -= STEP; }
     if (drone.crashed) {
-      if (!crashTimer) { crashSound(); $('msg').textContent = `CRASHED (${drone.crashed})  -  press A / R`; $('msg').classList.remove('hidden'); }
+      if (!crashTimer) {
+        crashSound(); crashStatic = 1;
+        $('msg').textContent = `CRASHED (${drone.crashed})  -  press A / R`; $('msg').classList.remove('hidden');
+      }
       if ((crashTimer += dt) > 2.5) respawn();
     }
-    updateHud(dt);
+    if (settings.osd) {
+      _e.setFromQuaternion(drone.q, 'YXZ');
+      updateOsd(dt, drone, { alt, home, noise, armHint: armHint > 0, pitch: _e.x, roll: _e.z, uptilt: settings.uptilt, vfov: camera.fov });
+    }
+    $('osd').classList.toggle('hidden', !settings.osd);
+    $('horizon').classList.toggle('hidden', settings.chase);
   }
   updateAudio(state === 'fly' ? drone : null);
   world.update(drone.pos.x, drone.pos.z);
   updateCamera(dt);
-  renderer.render(scene, camera);
+  video.render(scene, camera, { analog: settings.video, amount: settings.videoAmount, noise, fisheye: settings.fisheye });
 }
 
 respawn();

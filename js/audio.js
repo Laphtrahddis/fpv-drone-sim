@@ -54,7 +54,7 @@ export function updateAudio(drone) {
   if (!ctx) return;
   const t = ctx.currentTime, k = 0.03;
   master.gain.setTargetAtTime(settings.mute ? 0 : settings.volume, t, 0.05);
-  const on = drone && !drone.crashed;
+  const on = drone && !drone.crashed && drone.motor > 0.01; // silent when disarmed, spins up on arm
   const m = on ? drone.motor : 0, w = on ? drone.w : { x: 0, y: 0, z: 0 };
 
   // quad-X motor mix: front-left, front-right, back-left, back-right

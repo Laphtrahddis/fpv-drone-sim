@@ -4,8 +4,8 @@ import * as THREE from 'three';
 import { createNoise2D } from 'simplex-noise';
 
 const CELL = 10, N = 180;        // terrain grid: 180 x 10m = 1.8km across
-const TREE_CELL = 24, TREE_R = 800;
-const BUSH_CELL = 7, BUSH_R = 280;   // small rocks/bushes near you, so you can SEE your speed
+const TREE_CELL = 16, TREE_R = 700;
+const BUSH_CELL = 4, BUSH_R = 220;   // small rocks/bushes near you, so you can SEE your speed
 
 // Small deterministic random generator, so the same seed gives the same world.
 function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
@@ -24,10 +24,10 @@ export class World {
     scene.add(this.ground = new THREE.Mesh(this.geo, mat));
 
     const cone = new THREE.ConeGeometry(1, 1, 6).translate(0, 0.5, 0);
-    this.trees = new THREE.InstancedMesh(cone, new THREE.MeshLambertMaterial({ color: 0x2f6b3a, flatShading: true }), 4000);
+    this.trees = new THREE.InstancedMesh(cone, new THREE.MeshLambertMaterial({ color: 0x2f6b3a, flatShading: true }), 7000);
     scene.add(this.trees);
     const rock = new THREE.IcosahedronGeometry(1, 0);
-    this.bushes = new THREE.InstancedMesh(rock, new THREE.MeshLambertMaterial({ color: 0x6f7a4a, flatShading: true }), 7000);
+    this.bushes = new THREE.InstancedMesh(rock, new THREE.MeshLambertMaterial({ color: 0x6f7a4a, flatShading: true }), 9000);
     scene.add(this.bushes);
 
     const pad = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 0.2, 24), new THREE.MeshLambertMaterial({ color: 0xdd8822 }));
@@ -97,7 +97,7 @@ export class World {
     const m = new THREE.Matrix4(), cx = ci * CELL, cz = cj * CELL, R = TREE_R / TREE_CELL;
     let n = 0;
     for (let i = Math.floor(cx / TREE_CELL) - R; i <= cx / TREE_CELL + R; i++)
-      for (let j = Math.floor(cz / TREE_CELL) - R; j <= cz / TREE_CELL + R && n < 4000; j++) {
+      for (let j = Math.floor(cz / TREE_CELL) - R; j <= cz / TREE_CELL + R && n < 7000; j++) {
         const t = this.tree(i, j);
         if (t) this.trees.setMatrixAt(n++, m.makeScale(t.r, t.h, t.r).setPosition(t.x, t.y, t.z));
       }
@@ -106,16 +106,16 @@ export class World {
     this.trees.computeBoundingSphere();
   }
 
-  // Bushes/rocks: tiny, no collision, rebuilt every 60m of travel
+  // Bushes/rocks: small, no collision, rebuilt every 40m of travel
   updateBushes(x, z) {
-    const bi = Math.round(x / 60), bj = Math.round(z / 60);
+    const bi = Math.round(x / 40), bj = Math.round(z / 40);
     if (this.bc && this.bc[0] === bi && this.bc[1] === bj) return;
     this.bc = [bi, bj];
-    const m = new THREE.Matrix4(), R = BUSH_R / BUSH_CELL, i0 = Math.round(bi * 60 / BUSH_CELL), j0 = Math.round(bj * 60 / BUSH_CELL);
+    const m = new THREE.Matrix4(), R = BUSH_R / BUSH_CELL, i0 = Math.round(bi * 40 / BUSH_CELL), j0 = Math.round(bj * 40 / BUSH_CELL);
     let n = 0;
-    for (let i = i0 - R; i <= i0 + R; i++) for (let j = j0 - R; j <= j0 + R && n < 7000; j++) {
-      if (hash(i, j, 7) > 0.22) continue;
-      const bx = (i + hash(i, j, 8)) * BUSH_CELL, bz = (j + hash(i, j, 9)) * BUSH_CELL, sc = 0.3 + 0.9 * hash(i, j, 10);
+    for (let i = i0 - R; i <= i0 + R; i++) for (let j = j0 - R; j <= j0 + R && n < 9000; j++) {
+      if (hash(i, j, 7) > 0.3) continue;
+      const bx = (i + hash(i, j, 8)) * BUSH_CELL, bz = (j + hash(i, j, 9)) * BUSH_CELL, sc = 0.25 + 0.8 * hash(i, j, 10);
       m.makeScale(sc, sc * 0.7, sc).setPosition(bx, this.groundAt(bx, bz), bz);
       this.bushes.setMatrixAt(n++, m);
     }

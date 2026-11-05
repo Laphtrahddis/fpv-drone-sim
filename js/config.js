@@ -11,6 +11,7 @@ const defaults = {
     roll:  { center: 70, max: 600, expo: 0.5 },
     yaw:   { center: 70, max: 400, expo: 0.4 },
   },
+  gravity: 1.4,                    // gravity multiplier (thrust scales too, so hover stays the same)
   maxAngle: 60,                    // Angle mode tilt limit
   invert: { throttle: false, yaw: false, pitch: false, roll: false },
   // Which gamepad axis drives each channel. s = sign so that UP / RIGHT is +1.
@@ -19,6 +20,11 @@ const defaults = {
   uptilt: 25,                      // camera uptilt, degrees
   fov: 115,                        // horizontal field of view, degrees
   chase: false,
+  shake: 0.35,                     // camera shake multiplier
+  fisheye: false,
+  video: true,                     // analog video effect
+  videoAmount: 0.7,
+  osd: true,
   volume: 0.7,
   mute: false,
 };
@@ -46,10 +52,12 @@ export const PHYS = {
   rateLag: 0.03,                  // s, how quickly the rate loop reaches the requested rotation
   angleGain: 7,                   // Angle mode: rad/s of correction per rad of tilt error
   propSpeed: 70,                  // m/s of air through the props at which thrust drops to 0
-  dragUp: 0.03,                   // quadratic drag along UP (flat side: big)
+  dragUp: 0.022,                  // quadratic drag along UP (flat side: big)
   dragFlat: 0.007,                // quadratic drag in the prop plane (edge-on: small)
   linDrag: 0.03,
-  turbulence: 0.15,
+  turbulence: 0.08,
+  batteryLife: 0.011,             // battery used per second at full throttle (~90 s flat out)
+  sag: 0.25,                      // empty battery gives 25% less max thrust
 };
 // thrust ~ motor^2, so hover throttle is sqrt(weight / max thrust), adjusted for idle
 PHYS.hoverThrottle = (Math.sqrt(1 / tw) - PHYS.idle) / (1 - PHYS.idle);

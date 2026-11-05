@@ -18,9 +18,11 @@ No wrangler or API tokens are needed.
 | Yaw | left stick ↔ | A / D |
 | Pitch | right stick ↕ | ↑ / ↓ |
 | Roll | right stick ↔ | ← / → |
+| Arm / disarm (throttle down!) | B | Space |
 | Reset | A | R |
 | Angle / Acro | X | M |
 | Chase cam | Y | C |
+| Analog video effect | BACK | V |
 | Mute | | N |
 | Menu | START | Esc / P |
 
@@ -32,6 +34,9 @@ Use **Controller Test** in the menu to check that your sticks are mapped correct
 - `js/drone.js`: quadcopter physics (Angle + Acro, Betaflight-style rates)
 - `js/world.js`: noise terrain + trees, collision
 - `js/audio.js`: synthesized motor / prop / wind / crash sound (Web Audio)
+- `js/osd.js`: goggle-style on-screen display
+- `js/video.js`: analog video + fisheye shader (one fullscreen pass)
+- `js/settingsMenu.js`: settings screen
 - `js/controllerTest.js`: calibration screen
 - `js/main.js`: scene, loop, camera, menus
 

@@ -15,19 +15,25 @@
 <body>
 <canvas id="c"></canvas>
 
-<div id="hud" class="hidden"></div>
+<div id="osd" class="hidden">
+  <div id="horizon"></div><div id="cross">-+-</div>
+  <div id="osdTL"></div><div id="osdTR"></div><div id="osdBL"></div><div id="osdBR"></div>
+  <div id="osdWarn"></div>
+</div>
 <div id="msg" class="hidden"></div>
 <div id="padStatus"></div>
 
 <div id="menu" class="overlay">
   <h1>FPV DRONE SIM</h1>
   <button data-act="fly">Free Flight</button>
+  <button data-act="settings">Settings</button>
   <button data-act="test">Controller Test</button>
   <p class="help">
     <b>Gamepad (Mode 2):</b> left stick = throttle + yaw, right stick = pitch + roll<br>
-    A = reset &nbsp; X = Angle/Acro &nbsp; Y = chase cam &nbsp; START = menu<br>
+    <b>To fly: hold throttle DOWN, then press B (or Space) to ARM the motors.</b><br>
+    B = arm/disarm &nbsp; A = reset &nbsp; X = Acro/Angle &nbsp; Y = chase cam &nbsp; BACK = video effect &nbsp; START = menu<br>
     <b>Keyboard:</b> W/S throttle &nbsp; A/D yaw &nbsp; arrows pitch/roll<br>
-    R reset &nbsp; M Angle/Acro &nbsp; C chase cam &nbsp; N mute &nbsp; Esc/P menu
+    Space arm &nbsp; R reset &nbsp; M Acro/Angle &nbsp; C chase cam &nbsp; V video effect &nbsp; N mute &nbsp; Esc/P menu
   </p>
 </div>
 
@@ -35,8 +41,15 @@
   <h1>PAUSED</h1>
   <button data-act="resume">Resume</button>
   <button data-act="restart">Restart</button>
+  <button data-act="settings">Settings</button>
   <button data-act="test">Controller Test</button>
   <button data-act="quit">Main Menu</button>
+</div>
+
+<div id="settings" class="overlay hidden">
+  <h1>SETTINGS</h1>
+  <div id="settingsList"></div>
+  <button data-act="back">Back</button>
 </div>
 
 <div id="test" class="overlay hidden">

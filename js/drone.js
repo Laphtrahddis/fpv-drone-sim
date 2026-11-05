@@ -31,12 +31,28 @@ export class Drone {
     this.throttle = 0;                // commanded throttle 0..1
     this.mode = settings.defaultMode;
     this.crashed = false;
+    this.armed = false;
+    this.battery = 1;                 // 0..1
+    this.flightTime = 0;              // seconds armed
   }
 
   reset(p) {
     this.pos.copy(p); this.vel.set(0, 0, 0); this.q.identity(); this.w.set(0, 0, 0);
     this.motor = 0; this.crashed = false;
+    this.armed = false; this.battery = 1; this.flightTime = 0;
   }
+
+  // Real drones only arm with the throttle at the bottom, so props can't spin up by surprise.
+  // Returns false if the throttle wasn't low.
+  toggleArm(s) {
+    if (this.armed || this.crashed) { this.armed = false; return true; }
+    if (s.throttle > -0.75) return false;
+    this.armed = true;
+    return true;
+  }
+
+  // 4S LiPo: 16.8V full, ~14.0V empty, and the voltage dips under load ("sag")
+  get voltage() { return 14 + 2.8 * this.battery - 0.8 * this.motor * this.motor; }
 
   // yaw angle of the nose, used by the chase cam
   get heading() { return _e.setFromQuaternion(this.q, 'YXZ').y; }
@@ -56,7 +72,9 @@ export class Drone {
     // ---- 1. rate setpoint (what rotation speed the pilot is asking for), body frame ----
     // Three.js axes: forward = -Z, up = +Y, right = +X.  Nose down = -X rotation, roll right = -Z.
     _sp.set(-actualRate(s.pitch, R.pitch), -actualRate(s.yaw, R.yaw), -actualRate(s.roll, R.roll)).multiplyScalar(DEG);
-    if (this.mode === 'ANGLE') {
+    const live = this.armed && this.battery > 0;
+    if (!live) _sp.copy(this.w);   // no motors = no control: it just tumbles
+    else if (this.mode === 'ANGLE') {
       // target attitude = current heading, tilted by the stick angle
       const maxA = settings.maxAngle * DEG;
       _e.setFromQuaternion(this.q, 'YXZ');
@@ -81,16 +99,20 @@ export class Drone {
 
     // ---- 3. motors: spool-up lag, thrust ~ rpm^2, idle spin (air mode) ----
     this.throttle = this.throttleFrom(s.throttle);
-    const cmd = PHYS.idle + (1 - PHYS.idle) * this.throttle;
+    const cmd = live ? PHYS.idle + (1 - PHYS.idle) * this.throttle : 0;
     this.motor += (cmd - this.motor) * (1 - Math.exp(-dt / PHYS.motorLag));
     _up.set(0, 1, 0).applyQuaternion(this.q);
     const inflow = this.vel.dot(_up);                                 // air speed through the props
     const dyn = THREE.MathUtils.clamp(1 - inflow / PHYS.propSpeed, 0, 1.15);
-    const thrust = PHYS.maxThrust * this.motor * this.motor * dyn;
+    const thrust = PHYS.maxThrust * settings.gravity * (1 - PHYS.sag * (1 - this.battery)) * this.motor * this.motor * dyn;
+    if (live) {
+      this.battery = Math.max(0, this.battery - dt * PHYS.batteryLife * (0.08 + this.motor * this.motor));
+      this.flightTime += dt;
+    }
 
     // ---- 4. forces: thrust + gravity + direction-dependent drag ----
     _a.copy(_up).multiplyScalar(thrust / PHYS.mass);
-    _a.y -= PHYS.gravity;
+    _a.y -= PHYS.gravity * settings.gravity;
     const vUp = inflow, sp = this.speed;                              // split velocity: along UP vs in the prop plane
     _v.copy(this.vel).addScaledVector(_up, -vUp);
     _a.addScaledVector(_up, -PHYS.dragUp * vUp * sp);
@@ -102,14 +124,16 @@ export class Drone {
     // ---- 5. collisions: gentle touch = landing, hard hit = crash ----
     const gy = world.groundAt(this.pos.x, this.pos.z) + RADIUS;
     if (this.pos.y < gy) {
-      if (-this.vel.y > 6 || Math.hypot(this.vel.x, this.vel.z) > 8 || _up.y < 0.4) return this.crash('ground');
+      // forgiving: only a hard slam, a very fast touch or landing upside down is a crash
+      if (-this.vel.y > 9 || this.speed > 16 || _up.y < 0) return this.crash('ground');
       this.pos.y = gy;
       this.vel.y = Math.max(0, this.vel.y);
-      const f = Math.exp(-6 * dt); this.vel.x *= f; this.vel.z *= f;
-      if (_up.y < 0.98 && this.throttle < PHYS.hoverThrottle) this.q.slerp(_q.setFromEuler(_e.set(0, this.heading, 0)), 1 - Math.exp(-10 * dt)); // settle flat on its legs
+      const f = Math.exp(-3 * dt); this.vel.x *= f; this.vel.z *= f;
+      if (!live) this.w.set(0, 0, 0);
+      if (_up.y < 0.98 && (!live || _up.y < 0.7 || this.throttle < PHYS.hoverThrottle)) this.q.slerp(_q.setFromEuler(_e.set(0, this.heading, 0)), 1 - Math.exp(-10 * dt)); // settle flat on its legs
     }
     if (world.hit(this.pos, RADIUS) === 'tree') this.crash('tree');
   }
 
-  crash(what) { this.crashed = what; this.vel.set(0, 0, 0); this.w.set(0, 0, 0); }
+  crash(what) { this.crashed = what; this.armed = false; this.vel.set(0, 0, 0); this.w.set(0, 0, 0); }
 }

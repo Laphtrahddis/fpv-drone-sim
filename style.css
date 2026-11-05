@@ -15,8 +15,15 @@ button.small { min-width: 0; padding: 4px 10px; }
 .help { color: #bbb; text-align: center; line-height: 1.6; max-width: 640px; }
 
 /* text with dark outline, like goggle OSD */
-#hud, #msg, #padStatus { position: fixed; pointer-events: none; text-shadow: 0 0 3px #000, 0 0 2px #000; }
-#hud { left: 16px; bottom: 16px; font-size: 18px; white-space: pre; }
+#osd, #msg, #padStatus { position: fixed; pointer-events: none; text-shadow: 0 0 3px #000, 0 0 2px #000, 1px 1px 0 #000; }
+#osd { inset: 0; font-size: clamp(14px, 2.2vw, 22px); font-weight: bold; overflow: hidden; }
+#osd > div { position: absolute; white-space: pre; }
+#osdTL { left: 6%; top: 6%; } #osdTR { right: 6%; top: 6%; text-align: right; }
+#osdBL { left: 6%; bottom: 7%; } #osdBR { right: 6%; bottom: 7%; text-align: right; }
+#osdWarn { top: 62%; width: 100%; text-align: center; }
+#cross { left: 50%; top: 50%; transform: translate(-50%, -50%); opacity: .8; }
+#horizon { left: 35%; width: 30%; top: 50%; height: 0; border-top: 2px dashed rgba(255,255,255,.7); box-shadow: 0 0 2px #000; }
+.warn { color: #ff4; }
 #msg { top: 40%; width: 100%; text-align: center; font-size: 28px; }
 #padStatus { top: 10px; right: 16px; font-size: 13px; z-index: 5; }
 
@@ -29,3 +36,10 @@ button.small { min-width: 0; padding: 4px 10px; }
 #rawAxes, #rawBtns { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; max-width: 700px; font-size: 12px; }
 #rawBtns span { width: 34px; padding: 4px 0; text-align: center; border: 1px solid #555; border-radius: 4px; }
 #rawBtns span.on { background: #4cf; color: #000; }
+
+#settingsList { display: flex; flex-direction: column; gap: 6px; width: min(560px, 100%); }
+.row { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.row > span:first-child { flex: 1; }
+.row input[type=range] { width: 180px; }
+.row input + span { width: 48px; text-align: right; }
+input:focus { outline: 2px solid #4cf; }
