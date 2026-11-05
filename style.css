@@ -43,3 +43,18 @@ button.small { min-width: 0; padding: 4px 10px; }
 .row input[type=range] { width: 180px; }
 .row input + span { width: 48px; text-align: right; }
 input:focus { outline: 2px solid #4cf; }
+
+/* Flight School */
+#lessonList { display: flex; flex-direction: column; gap: 6px; }
+#lessonList button { text-align: left; min-width: 320px; }
+.teach { white-space: pre-line; max-width: 680px; line-height: 1.6; color: #ddd; }
+#lesson { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); width: min(560px, 90vw);
+  background: rgba(0,0,0,.55); border-radius: 8px; padding: 10px 14px; text-align: center; pointer-events: none; }
+#lessonTitle { font-size: 13px; color: #9cf; }
+#lessonGoal { font-size: 17px; margin: 6px 0; }
+#lessonHint { height: 18px; color: #ff4; font-size: 14px; }
+.bar.wide { width: 100%; }
+.bar.wide i { left: 0; transition: width .15s; }
+.mini { display: flex; gap: 16px; justify-content: center; margin-top: 4px; }
+.mini .stick { width: 54px; height: 54px; margin: 0; }
+.mini .stick i { width: 10px; height: 10px; margin: -5px; }

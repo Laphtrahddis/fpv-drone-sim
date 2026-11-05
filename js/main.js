@@ -1,6 +1,6 @@
 // Entry point: scene, game loop, menus, camera.
 import * as THREE from 'three';
-import { settings, saveSettings } from './config.js';
+import { settings, saveSettings, PHYS } from './config.js';
 import { sticks, pad, events, updateInput, resetInput } from './input.js';
 import { Drone } from './drone.js';
 import { World } from './world.js';
@@ -9,6 +9,7 @@ import { initAudio, updateAudio, crashSound, audioReady } from './audio.js';
 import { Video } from './video.js';
 import { updateOsd } from './osd.js';
 import { buildSettings } from './settingsMenu.js';
+import { LESSONS, progress, markDone } from './school.js';
 
 // audio may only start after a user gesture
 addEventListener('pointerdown', initAudio);
@@ -66,10 +67,12 @@ for (const [x, z] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
 scene.add(model);
 
 // --- game state & menus ---
-let state = 'menu';           // 'menu' | 'fly' | 'pause' | 'test' | 'settings'
+let state = 'menu';           // 'menu' | 'fly' | 'pause' | 'test' | 'settings' | 'school' | 'lessonIntro' | 'lessonDone'
 let backTo = 'menu';
-let crashTimer = 0, crashStatic = 0, armHint = 0;
-const overlays = { menu: $('menu'), pause: $('pause'), test: $('test'), settings: $('settings') };
+let crashStatic = 0, armHint = 0, crashes = 0;
+let mission = null;           // current Flight School lesson, or null for free flight
+const overlays = {};
+for (const k of ['menu', 'pause', 'test', 'settings', 'school', 'lessonIntro', 'lessonDone']) overlays[k] = $(k);
 
 function setState(s) {
   if (s === 'test' || s === 'settings') backTo = state;
@@ -78,6 +81,9 @@ function setState(s) {
   if (s === 'fly') document.activeElement?.blur(); // otherwise Space would "click" the last menu button
   for (const k in overlays) overlays[k].classList.toggle('hidden', k !== s);
   $('osd').classList.toggle('hidden', s !== 'fly' || !settings.osd);
+  $('lesson').classList.toggle('hidden', s !== 'fly' || !mission);
+  if (s === 'school') $('lessonList').innerHTML = LESSONS.map((l, i) =>
+    `<button data-lesson="${i}">${progress.includes(i) ? '✓' : '·'} ${i + 1}. ${l.title}</button>`).join('');
   const first = overlays[s]?.querySelector('button, input');
   if (first) first.focus();
 }
@@ -90,24 +96,94 @@ function flash(text, secs = 2) {
 }
 
 function respawn() {
-  world.update(SPAWN.x, SPAWN.z, true);
-  drone.reset(SPAWN); resetInput(); crashTimer = 0;
-  drone.mode = settings.startMode;
+  replay = null;
+  const sp = mission ? LESSONS[mission.i].spawn : {};
+  const p = sp.pos ? new THREE.Vector3(sp.pos[0], world.groundAt(sp.pos[0], sp.pos[2]) + sp.pos[1], sp.pos[2]) : SPAWN;
+  world.update(p.x, p.z, true);
+  drone.reset(p); resetInput();
+  drone.mode = sp.mode || settings.startMode;
+  if (sp.armed) { drone.armed = true; drone.motor = PHYS.idle + (1 - PHYS.idle) * PHYS.hoverThrottle; } // already hovering
+  history.length = 0;
   $('msg').classList.add('hidden');
+  if (mission) startSteps();
+}
+
+// ---------- Flight School ----------
+const props = new THREE.Group(); // lesson markers + gates
+scene.add(props);
+function startSteps() {
+  props.clear();
+  mission.cur = 0;
+  mission.steps = LESSONS[mission.i].steps(lessonCtx());
+}
+let hintT = 0, restartLesson = false;
+const lastPos = new THREE.Vector3();
+function lessonCtx(alt = 0) {
+  return { drone, sticks, alt, props, prev: lastPos,
+    say: t => { $('lessonHint').textContent = t; hintT = 2; },
+    restart: () => { restartLesson = true; } };
+}
+function openLesson(i) {
+  mission = { i };
+  const L = LESSONS[i];
+  $('introTitle').textContent = `Lesson ${i + 1}: ${L.title}`;
+  $('introText').textContent = L.teach.replace(/\n(?=[a-z(])/g, ' '); // join wrapped lines, keep real line breaks
+  setState('lessonIntro');
+}
+function updateLesson(dt, alt) {
+  const st = mission.steps[mission.cur];
+  if (st && st.check(lessonCtx(alt), dt)) {
+    mission.cur++;
+    if (mission.cur >= mission.steps.length) {
+      markDone(mission.i);
+      $('doneText').textContent = mission.i + 1 < LESSONS.length
+        ? `Nice flying! Lesson ${mission.i + 1} done. Ready for "${LESSONS[mission.i + 1].title}"?`
+        : 'You graduated from Flight School! You know the real basics of FPV flying now. Go rip in Free Flight!';
+      drone.armed = false;
+      return setState('lessonDone');
+    }
+    $('lessonHint').textContent = '✓ Nice!'; hintT = 1.2;
+  }
+  if (restartLesson) { restartLesson = false; respawn(); }
+  if ((hintT -= dt) <= 0) $('lessonHint').textContent = '';
+  const cur = mission.steps[mission.cur], text = typeof cur.text === 'function' ? cur.text() : cur.text;
+  $('lessonTitle').textContent = `${mission.i + 1}. ${LESSONS[mission.i].title}   (step ${mission.cur + 1}/${mission.steps.length})`;
+  $('lessonGoal').textContent = text;
+  $('lessonBar').style.width = Math.round(100 * Math.min(1, cur.check.p || 0)) + '%';
+  // live stick diagram
+  $('lDotL').style.left = 50 + 42 * sticks.yaw + '%'; $('lDotL').style.top = 50 - 42 * sticks.throttle + '%';
+  $('lDotR').style.left = 50 + 42 * sticks.roll + '%'; $('lDotR').style.top = 50 - 42 * sticks.pitch + '%';
+}
+
+// ---------- crash replay: rolling buffer of the last seconds, played back in slow motion ----------
+const history = [];   // { p, q } recorded every frame (~last 4 s)
+let replay = null;    // { frames, t, cam }
+function startReplay() {
+  const tEnd = history.length ? history[history.length - 1].t : 0;
+  const frames = history.filter(h => h.t > tEnd - 2.5);
+  if (frames.length < 5) return respawn();
+  const end = frames[frames.length - 1].p, from = frames[0].p;
+  const back = new THREE.Vector3().subVectors(from, end).setY(0);
+  if (back.lengthSq() < 1) back.set(0, 0, 1);
+  replay = { frames, t: 0, k: 0, end: 0, cam: end.clone().add(back.normalize().multiplyScalar(5)).add(new THREE.Vector3(1.5, 2.5, 0)) };
 }
 
 const ACTIONS = {
-  fly: () => { respawn(); setState('fly'); },
+  fly: () => { mission = null; props.clear(); world.setClear(60); respawn(); setState('fly'); },
+  school: () => { mission = null; setState('school'); },
+  lessonStart: () => { world.setClear(450); respawn(); setState('fly'); },
+  lessonNext: () => { if (mission.i + 1 < LESSONS.length) openLesson(mission.i + 1); else setState('school'); },
   resume: () => setState('fly'),
   restart: () => { respawn(); setState('fly'); },
   test: () => setState('test'),
   settings: () => setState('settings'),
   back: () => setState(backTo),
-  quit: () => setState('menu'),
+  quit: () => { mission = null; setState('menu'); },
 };
 document.addEventListener('click', e => {
-  const act = e.target.dataset?.act;
+  const act = e.target.dataset?.act, lesson = e.target.dataset?.lesson;
   if (act) ACTIONS[act]();
+  if (lesson !== undefined) openLesson(+lesson);
 });
 
 // Menu navigation with D-pad / keyboard. A presses the focused item, D-pad left/right moves sliders.
@@ -130,7 +206,9 @@ function handleEvents() {
   for (const ev of events) {
     if (ev.startsWith('pad')) initAudio(); // some browsers accept gamepad presses as a gesture
     if (ev === 'KeyN') { settings.mute = !settings.mute; saveSettings(); }
-    if (state === 'fly') {
+    if (state === 'fly' && replay) {
+      if (['KeyR', 'pad0', 'pad1', 'Space', 'Enter'].includes(ev)) respawn(); // skip replay
+    } else if (state === 'fly') {
       if (ev === 'KeyR' || ev === 'pad0') respawn();
       if (ev === 'Space' || ev === 'pad1') { if (!drone.toggleArm(sticks)) armHint = 2; }
       if (ev === 'Escape' || ev === 'KeyP' || ev === 'pad9') setState('pause');
@@ -146,6 +224,7 @@ function handleEvents() {
       if (ev === 'Escape' || ev === 'pad9') ACTIONS.back();
     } else if (state === 'pause' && (ev === 'Escape' || ev === 'KeyP' || ev === 'pad9' || ev === 'pad1')) setState('fly');
     else if (state === 'settings' && (ev === 'Escape' || ev === 'pad1')) ACTIONS.back();
+    else if (['school', 'lessonIntro', 'lessonDone'].includes(state) && (ev === 'Escape' || ev === 'pad1')) state === 'school' ? ACTIONS.quit() : ACTIONS.school();
     else menuNav(ev);
   }
   events.length = 0;
@@ -156,8 +235,11 @@ const uptiltQ = new THREE.Quaternion(), _v = new THREE.Vector3(), _q = new THREE
 function updateCamera(dt) {
   model.position.copy(drone.pos);
   model.quaternion.copy(drone.q);
-  model.visible = settings.chase;
-  if (settings.chase) {
+  model.visible = settings.chase || !!replay;
+  if (replay) {
+    camera.position.copy(replay.cam);
+    camera.lookAt(drone.pos);
+  } else if (settings.chase) {
     // behind and above the drone, following its heading only (not its tilt)
     _q.setFromAxisAngle(_v.set(0, 1, 0), drone.heading);
     const target = _v.set(0, 0.6, 2.2).applyQuaternion(_q).add(drone.pos);
@@ -204,24 +286,35 @@ function frame(now) {
   if (flashT > 0 && (flashT -= dt) <= 0 && !drone.crashed) $('msg').classList.add('hidden');
   const noise = signalNoise(alt, home);
 
-  if (state === 'fly') {
+  if (state === 'fly' && replay) {
+    // slow-motion replay (35% speed) of the last seconds before the crash
+    replay.t += dt * 0.35;
+    const f = replay.frames;
+    while (replay.k < f.length - 1 && f[replay.k + 1].t - f[0].t < replay.t) replay.k++;
+    drone.pos.copy(f[replay.k].p); drone.q.copy(f[replay.k].q);
+    if (replay.k >= f.length - 1 && (replay.end += dt) > 1.2) respawn();
+  } else if (state === 'fly') {
+    lastPos.copy(drone.pos);
     acc += dt;
     while (acc >= STEP) { drone.step(STEP, sticks, world); acc -= STEP; }
+    history.push({ p: drone.pos.clone(), q: drone.q.clone(), t: now / 1000 });
+    if (history.length > 400) history.shift();
     if (drone.crashed) {
-      if (!crashTimer) {
-        crashSound(); crashStatic = 1;
-        $('msg').textContent = `CRASHED (${drone.crashed})  -  press A / R`; $('msg').classList.remove('hidden');
-      }
-      if ((crashTimer += dt) > 2.5) respawn();
-    }
+      crashes++; crashSound(); crashStatic = 1;
+      $('msg').textContent = `CRASH #${crashes} (${drone.crashed})  -  slow-mo replay, A to skip`;
+      $('msg').classList.remove('hidden');
+      startReplay();
+    } else if (mission) updateLesson(dt, alt);
+  }
+  if (state === 'fly') {
     if (settings.osd) {
       _e.setFromQuaternion(drone.q, 'YXZ');
       updateOsd(dt, drone, { alt, home, noise, armHint: armHint > 0, pitch: _e.x, roll: _e.z, uptilt: settings.uptilt, vfov: camera.fov });
     }
-    $('osd').classList.toggle('hidden', !settings.osd);
+    $('osd').classList.toggle('hidden', !settings.osd || !!replay);
     $('horizon').classList.toggle('hidden', settings.chase);
   }
-  updateAudio(state === 'fly' ? drone : null);
+  updateAudio(state === 'fly' && !replay ? drone : null);
   world.update(drone.pos.x, drone.pos.z);
   updateCamera(dt);
   video.render(scene, camera, { analog: settings.video, amount: settings.videoAmount, noise, fisheye: settings.fisheye });

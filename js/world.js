@@ -34,6 +34,7 @@ export class World {
     this.noise = createNoise2D(mulberry32(seed));
     this.chunks = new Map();
     this.radius = 3; // chunks loaded around the drone (set from graphics quality)
+    this.clear = 60; // open, flat area around the spawn (Flight School uses a bigger one)
     const pad = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 0.2, 24), new THREE.MeshLambertMaterial({ color: 0xdd8822 }));
     pad.position.y = this.height(0, 0) + 0.1;
     scene.add(pad);
@@ -45,14 +46,14 @@ export class World {
   city(x, z) {
     const n = smooth(0.25, 0.45, this.noise(x / 1400 + 50, z / 1400));
     const nearSpawn = 1 - smooth(250, 450, Math.hypot(x, z + 500));
-    return Math.max(n, nearSpawn) * smooth(40, 90, Math.hypot(x, z)); // keep the spawn clear
+    return Math.max(n, nearSpawn) * smooth(this.clear - 20, this.clear + 30, Math.hypot(x, z)); // keep the spawn clear
   }
 
   // Terrain height: hills everywhere, flattened in cities and around the spawn.
   height(x, z) {
     const n = this.noise;
     const h = 45 * n(x / 700, z / 700) + 18 * n(x / 220, z / 220) + 4 * n(x / 60, z / 60);
-    const flat = Math.max(smooth(0.05, 0.5, this.city(x, z)), 1 - smooth(60, 250, Math.hypot(x, z)));
+    const flat = Math.max(smooth(0.05, 0.5, this.city(x, z)), 1 - smooth(this.clear, this.clear + 190, Math.hypot(x, z)));
     return h * (1 - flat);
   }
   vtx(i, j) { return this.height(i * CELL, j * CELL); }
@@ -67,7 +68,7 @@ export class World {
   // Tree for a grid cell, or null. Pure function, so collision needs no list.
   tree(i, j) {
     const x = (i + 0.2 + 0.6 * this.hash(i, j, 1)) * TREE_CELL, z = (j + 0.2 + 0.6 * this.hash(i, j, 2)) * TREE_CELL;
-    if (Math.hypot(x, z) < 60 || this.city(x, z) > 0.05) return null;
+    if (Math.hypot(x, z) < this.clear || this.city(x, z) > 0.05) return null;
     if (this.hash(i, j, 3) > 0.15 + 0.35 * this.noise(x / 400 + 99, z / 400)) return null;
     return { x, z, y: this.groundAt(x, z) - 0.5, h: 8 + 10 * this.hash(i, j, 4), r: 2.5 + 2 * this.hash(i, j, 5) };
   }
@@ -162,7 +163,7 @@ export class World {
     // open country: a ring gate now and then
     if (this.city(x0 + 100, z0 + 100) < 0.2 && this.hash(ci, cj, 30) < 0.5) {
       const rx = x0 + 40 + 120 * this.hash(ci, cj, 31), rz = z0 + 40 + 120 * this.hash(ci, cj, 32);
-      if (Math.hypot(rx, rz) > 80) this.addRing(ch, rx, this.groundAt(rx, rz) + 5 + 8 * this.hash(ci, cj, 33), rz, this.hash(ci, cj, 34) * Math.PI, 3.5);
+      if (Math.hypot(rx, rz) > this.clear + 20) this.addRing(ch, rx, this.groundAt(rx, rz) + 5 + 8 * this.hash(ci, cj, 33), rz, this.hash(ci, cj, 34) * Math.PI, 3.5);
     }
     if (ch.rings.length) {
       const mesh = new THREE.InstancedMesh(RING, MAT.ring, ch.rings.length), mx = new THREE.Matrix4(), q = new THREE.Quaternion();
@@ -198,6 +199,14 @@ export class World {
     ch.group.traverse(o => { if (o.isInstancedMesh) o.computeBoundingSphere(); });
     this.scene.add(ch.group);
     return ch;
+  }
+
+  // Change the size of the open area around the spawn (rebuilds all chunks)
+  setClear(r) {
+    if (this.clear === r) return;
+    this.clear = r;
+    for (const ch of this.chunks.values()) this.disposeChunk(ch);
+    this.chunks.clear();
   }
 
   addRing(ch, x, y, z, yaw, R) { ch.rings.push({ x, y, z, yaw, R, tube: R * 0.1 }); }

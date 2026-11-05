@@ -37,6 +37,8 @@ Use **Controller Test** in the menu to check that your sticks are mapped correct
 - `js/osd.js`: goggle-style on-screen display
 - `js/video.js`: analog video + fisheye shader (one fullscreen pass)
 - `js/settingsMenu.js`: settings screen
+- `js/school.js`: Flight School, 15 lessons (steps + automatic checks)
+- `js/gates.js`: gates/rings: pass detection + collision
 - `js/controllerTest.js`: calibration screen
 - `js/main.js`: scene, loop, camera, menus
 

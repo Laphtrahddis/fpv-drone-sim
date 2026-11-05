@@ -36,8 +36,9 @@ export class Drone {
     this.flightTime = 0;              // seconds armed
   }
 
-  reset(p) {
-    this.pos.copy(p); this.vel.set(0, 0, 0); this.q.identity(); this.w.set(0, 0, 0);
+  reset(p, heading = 0) {
+    this.pos.copy(p); this.vel.set(0, 0, 0); this.w.set(0, 0, 0);
+    this.q.setFromAxisAngle(_v.set(0, 1, 0), heading);
     this.motor = 0; this.crashed = false;
     this.armed = false; this.battery = 1; this.flightTime = 0;
   }
