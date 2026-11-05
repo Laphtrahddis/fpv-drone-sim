@@ -51,7 +51,7 @@ input:focus { outline: 2px solid #4cf; }
 #lesson { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); width: min(560px, 90vw);
   background: rgba(0,0,0,.55); border-radius: 8px; padding: 10px 14px; text-align: center; pointer-events: none; }
 #lessonTitle { font-size: 13px; color: #9cf; }
-#lessonGoal { font-size: 17px; margin: 6px 0; }
+#lessonGoal { font-size: 17px; margin: 6px 0; white-space: pre-line; }
 #lessonHint { height: 18px; color: #ff4; font-size: 14px; }
 .bar.wide { width: 100%; }
 .bar.wide i { left: 0; transition: width .15s; }

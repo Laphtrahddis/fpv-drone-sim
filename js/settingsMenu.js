@@ -3,6 +3,8 @@ import { settings, saveSettings } from './config.js';
 
 // [path in settings, label, min/max/step | 'bool' | [choices]]
 const ITEMS = [
+  ['biome', 'World (Free Flight)', ['meadow', 'mountains', 'neon', 'forest', 'canyon']],
+  ['seed', 'World seed / race course', 1, 999, 1],
   ['quality', 'Graphics quality', ['low', 'medium', 'high']],
   ['uptilt', 'Camera uptilt (°)', 0, 45, 1],
   ['fov', 'Field of view (°)', 90, 130, 1],

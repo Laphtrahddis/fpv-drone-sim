@@ -1,15 +1,16 @@
-// Entry point: scene, game loop, menus, camera.
+// Entry point: scene, game loop, menus, camera, and the runner for game modes.
 import * as THREE from 'three';
 import { settings, saveSettings, PHYS } from './config.js';
 import { sticks, pad, events, updateInput, resetInput } from './input.js';
 import { Drone } from './drone.js';
-import { World } from './world.js';
+import { World, BIOMES } from './world.js';
 import { updateControllerTest } from './controllerTest.js';
 import { initAudio, updateAudio, crashSound, audioReady } from './audio.js';
 import { Video } from './video.js';
 import { updateOsd } from './osd.js';
 import { buildSettings } from './settingsMenu.js';
-import { LESSONS, progress, markDone } from './school.js';
+import { LESSONS, progress } from './school.js';
+import { lessonMode, raceMode, gapMode, batteryMode, freeMode, dailySeed } from './modes.js';
 
 // audio may only start after a user gesture
 addEventListener('pointerdown', initAudio);
@@ -17,18 +18,17 @@ addEventListener('keydown', initAudio);
 
 const $ = id => document.getElementById(id);
 const DEG = Math.PI / 180;
-const SKY = 0x9cc4e4;
 
 // --- renderer / scene ---
 const renderer = new THREE.WebGLRenderer({ canvas: $('c'), antialias: true });
 const video = new Video(renderer);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(SKY);
-scene.fog = new THREE.Fog(SKY, 150, 560);
-scene.add(new THREE.HemisphereLight(0xdfefff, 0x445533, 1.6));
+scene.background = new THREE.Color();
+scene.fog = new THREE.Fog(0, 150, 560);
+const hemi = new THREE.HemisphereLight(0xdfefff, 0x445533, 1.6);
 const sun = new THREE.DirectionalLight(0xffffff, 1.6);
 sun.position.set(0.5, 1, 0.3);
-scene.add(sun);
+scene.add(hemi, sun);
 
 const camera = new THREE.PerspectiveCamera(90, 1, 0.05, 1000);
 // graphics quality: view distance (chunks) + resolution
@@ -51,10 +51,18 @@ const world = new World(scene, 1);
 addEventListener('resize', resize);
 resize();
 
-const drone = new Drone();
-const SPAWN = new THREE.Vector3(0, world.groundAt(0, 0) + 0.15, 0);
+// Switch world seed / biome / open area, and match sky + light to the biome
+function applyWorld(w) {
+  world.configure(w);
+  const B = world.B;
+  scene.background.setHex(B.sky); scene.fog.color.setHex(B.sky);
+  hemi.intensity = B.light; sun.intensity = B.light;
+}
 
-// simple drone model, only visible in chase cam
+const drone = new Drone();
+const spawnPoint = () => new THREE.Vector3(0, world.groundAt(0, 0) + 0.15, 0);
+
+// simple drone model (chase cam + replays) and a see-through copy as the race ghost
 const model = new THREE.Group();
 const dark = new THREE.MeshLambertMaterial({ color: 0x222222 }), prop = new THREE.MeshLambertMaterial({ color: 0xff5522 });
 model.add(new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.05, 0.2), dark));
@@ -64,15 +72,20 @@ for (const [x, z] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
   const p = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.01, 12), prop);
   p.position.set(x * 0.11, 0.03, z * 0.11); model.add(p);
 }
-scene.add(model);
+const ghost = model.clone();
+const ghostMat = new THREE.MeshBasicMaterial({ color: 0x66ccff, transparent: true, opacity: 0.45 });
+ghost.traverse(o => { if (o.isMesh) o.material = ghostMat; });
+ghost.scale.setScalar(3); // bigger than life so you can see it
+ghost.visible = false;
+scene.add(model, ghost);
 
 // --- game state & menus ---
-let state = 'menu';           // 'menu' | 'fly' | 'pause' | 'test' | 'settings' | 'school' | 'lessonIntro' | 'lessonDone'
+let state = 'menu';           // menu | fly | pause | test | settings | school | intro | result
 let backTo = 'menu';
 let crashStatic = 0, armHint = 0, crashes = 0;
-let mission = null;           // current Flight School lesson, or null for free flight
+let mission = freeMode();     // the running game mode (free flight, lesson, race...)
 const overlays = {};
-for (const k of ['menu', 'pause', 'test', 'settings', 'school', 'lessonIntro', 'lessonDone']) overlays[k] = $(k);
+for (const k of ['menu', 'pause', 'test', 'settings', 'school', 'intro', 'result']) overlays[k] = $(k);
 
 function setState(s) {
   if (s === 'test' || s === 'settings') backTo = state;
@@ -81,83 +94,80 @@ function setState(s) {
   if (s === 'fly') document.activeElement?.blur(); // otherwise Space would "click" the last menu button
   for (const k in overlays) overlays[k].classList.toggle('hidden', k !== s);
   $('osd').classList.toggle('hidden', s !== 'fly' || !settings.osd);
-  $('lesson').classList.toggle('hidden', s !== 'fly' || !mission);
+  $('lesson').classList.toggle('hidden', s !== 'fly' || !!mission.free);
   if (s === 'school') $('lessonList').innerHTML = LESSONS.map((l, i) =>
     `<button data-lesson="${i}">${progress.includes(i) ? '✓' : '·'} ${i + 1}. ${l.title}</button>`).join('');
   const first = overlays[s]?.querySelector('button, input');
   if (first) first.focus();
 }
 
-function applySettings() { resize(); }
+function applySettings() {
+  resize();
+  if (mission.free) applyWorld(mission.world = { seed: settings.seed, biome: settings.biome, clear: 60 });
+}
 
 let flashT = 0;
 function flash(text, secs = 2) {
   $('msg').textContent = text; $('msg').classList.remove('hidden'); flashT = secs;
 }
 
+// ---------- running a mode ----------
+const props = new THREE.Group(); // a mode's gates, markers, beacons
+scene.add(props);
+let hintT = 0, restartPending = false;
+const lastPos = new THREE.Vector3();
+let curAlt = 0;
+const ctx = {
+  drone, world, props, ghost, prev: lastPos,
+  get alt() { return curAlt; },
+  say: t => { $('lessonHint').textContent = t; hintT = 2.5; },
+  hud: (title, goal, p) => {
+    $('lessonTitle').textContent = title; $('lessonGoal').textContent = goal;
+    $('lessonBar').parentElement.classList.toggle('hidden', p == null);
+    $('lessonBar').style.width = Math.round(100 * Math.min(1, p || 0)) + '%';
+  },
+  finish: (title, text, share) => {
+    drone.armed = false; ghost.visible = false;
+    $('resultTitle').textContent = title; $('resultText').textContent = text;
+    $('nextBtn').classList.toggle('hidden', !mission.next);
+    $('shareBtn').classList.toggle('hidden', !share);
+    $('shareBtn').dataset.url = share || '';
+    setState('result');
+  },
+  restart: () => { restartPending = true; },
+};
+Object.defineProperty(ctx, 'sticks', { get: () => sticks });
+
 function respawn() {
   replay = null;
-  const sp = mission ? LESSONS[mission.i].spawn : {};
-  const p = sp.pos ? new THREE.Vector3(sp.pos[0], world.groundAt(sp.pos[0], sp.pos[2]) + sp.pos[1], sp.pos[2]) : SPAWN;
+  const sp = mission.spawn || {};
+  const p = sp.pos ? new THREE.Vector3(sp.pos[0], world.groundAt(sp.pos[0], sp.pos[2]) + sp.pos[1], sp.pos[2]) : spawnPoint();
   world.update(p.x, p.z, true);
   drone.reset(p); resetInput();
   drone.mode = sp.mode || settings.startMode;
   if (sp.armed) { drone.armed = true; drone.motor = PHYS.idle + (1 - PHYS.idle) * PHYS.hoverThrottle; } // already hovering
+  lastPos.copy(p);
   history.length = 0;
   $('msg').classList.add('hidden');
-  if (mission) startSteps();
+  $('lessonHint').textContent = '';
+  props.clear();
+  ghost.visible = false;
+  mission.setup(ctx);
 }
 
-// ---------- Flight School ----------
-const props = new THREE.Group(); // lesson markers + gates
-scene.add(props);
-function startSteps() {
-  props.clear();
-  mission.cur = 0;
-  mission.steps = LESSONS[mission.i].steps(lessonCtx());
+// Show a mode's intro screen (or go straight in for free flight)
+function openMode(m) {
+  mission = m;
+  if (m.free) return startMode();
+  $('introTitle').textContent = m.title;
+  $('introText').textContent = m.intro.replace(/\n(?=[a-z(])/g, ' '); // join wrapped lines
+  setState('intro');
 }
-let hintT = 0, restartLesson = false;
-const lastPos = new THREE.Vector3();
-function lessonCtx(alt = 0) {
-  return { drone, sticks, alt, props, prev: lastPos,
-    say: t => { $('lessonHint').textContent = t; hintT = 2; },
-    restart: () => { restartLesson = true; } };
-}
-function openLesson(i) {
-  mission = { i };
-  const L = LESSONS[i];
-  $('introTitle').textContent = `Lesson ${i + 1}: ${L.title}`;
-  $('introText').textContent = L.teach.replace(/\n(?=[a-z(])/g, ' '); // join wrapped lines, keep real line breaks
-  setState('lessonIntro');
-}
-function updateLesson(dt, alt) {
-  const st = mission.steps[mission.cur];
-  if (st && st.check(lessonCtx(alt), dt)) {
-    mission.cur++;
-    if (mission.cur >= mission.steps.length) {
-      markDone(mission.i);
-      $('doneText').textContent = mission.i + 1 < LESSONS.length
-        ? `Nice flying! Lesson ${mission.i + 1} done. Ready for "${LESSONS[mission.i + 1].title}"?`
-        : 'You graduated from Flight School! You know the real basics of FPV flying now. Go rip in Free Flight!';
-      drone.armed = false;
-      return setState('lessonDone');
-    }
-    $('lessonHint').textContent = '✓ Nice!'; hintT = 1.2;
-  }
-  if (restartLesson) { restartLesson = false; respawn(); }
-  if ((hintT -= dt) <= 0) $('lessonHint').textContent = '';
-  const cur = mission.steps[mission.cur], text = typeof cur.text === 'function' ? cur.text() : cur.text;
-  $('lessonTitle').textContent = `${mission.i + 1}. ${LESSONS[mission.i].title}   (step ${mission.cur + 1}/${mission.steps.length})`;
-  $('lessonGoal').textContent = text;
-  $('lessonBar').style.width = Math.round(100 * Math.min(1, cur.check.p || 0)) + '%';
-  // live stick diagram
-  $('lDotL').style.left = 50 + 42 * sticks.yaw + '%'; $('lDotL').style.top = 50 - 42 * sticks.throttle + '%';
-  $('lDotR').style.left = 50 + 42 * sticks.roll + '%'; $('lDotR').style.top = 50 - 42 * sticks.pitch + '%';
-}
+function startMode() { applyWorld(mission.world); respawn(); setState('fly'); }
 
 // ---------- crash replay: rolling buffer of the last seconds, played back in slow motion ----------
-const history = [];   // { p, q } recorded every frame (~last 4 s)
-let replay = null;    // { frames, t, cam }
+const history = [];   // { p, q, t } recorded every frame
+let replay = null;    // { frames, t, k, end, cam }
 function startReplay() {
   const tEnd = history.length ? history[history.length - 1].t : 0;
   const frames = history.filter(h => h.t > tEnd - 2.5);
@@ -169,26 +179,36 @@ function startReplay() {
 }
 
 const ACTIONS = {
-  fly: () => { mission = null; props.clear(); world.setClear(60); respawn(); setState('fly'); },
-  school: () => { mission = null; setState('school'); },
-  lessonStart: () => { world.setClear(450); respawn(); setState('fly'); },
-  lessonNext: () => { if (mission.i + 1 < LESSONS.length) openLesson(mission.i + 1); else setState('school'); },
+  fly: () => openMode(freeMode()),
+  school: () => setState('school'),
+  gap: () => openMode(gapMode()),
+  race: () => openMode(raceMode(settings.seed)),
+  daily: () => openMode(raceMode(dailySeed(), { daily: true })),
+  battery: () => openMode(batteryMode()),
+  start: startMode,
+  again: startMode,
+  next: () => openMode(mission.next()),
+  share: async () => {
+    const url = $('shareBtn').dataset.url;
+    try { await navigator.clipboard.writeText(url); $('shareBtn').textContent = 'Link copied! ✓'; }
+    catch { prompt('Copy this link:', url); }
+  },
   resume: () => setState('fly'),
   restart: () => { respawn(); setState('fly'); },
   test: () => setState('test'),
   settings: () => setState('settings'),
   back: () => setState(backTo),
-  quit: () => { mission = null; setState('menu'); },
+  quit: () => { mission = freeMode(); setState('menu'); },
 };
 document.addEventListener('click', e => {
   const act = e.target.dataset?.act, lesson = e.target.dataset?.lesson;
   if (act) ACTIONS[act]();
-  if (lesson !== undefined) openLesson(+lesson);
+  if (lesson !== undefined) openMode(lessonMode(+lesson));
 });
 
-// Menu navigation with D-pad / keyboard. A presses the focused item, D-pad left/right moves sliders.
+// Menu navigation with D-pad / sticks / keyboard. A presses the focused item, left/right moves sliders.
 function menuNav(ev) {
-  const items = [...overlays[state].querySelectorAll('button, input')];
+  const items = [...overlays[state].querySelectorAll('button:not(.hidden), input')];
   const i = items.indexOf(document.activeElement), el = items[i];
   const focus = j => { items[j].focus(); items[j].scrollIntoView({ block: 'nearest' }); };
   const up = ev === 'pad12' || ev === 'navUp' || ev === 'ArrowUp', down = ev === 'pad13' || ev === 'navDown' || ev === 'ArrowDown';
@@ -224,7 +244,7 @@ function handleEvents() {
       if (ev === 'Escape' || ev === 'pad9') ACTIONS.back();
     } else if (state === 'pause' && (ev === 'Escape' || ev === 'KeyP' || ev === 'pad9' || ev === 'pad1')) setState('fly');
     else if (state === 'settings' && (ev === 'Escape' || ev === 'pad1')) ACTIONS.back();
-    else if (['school', 'lessonIntro', 'lessonDone'].includes(state) && (ev === 'Escape' || ev === 'pad1')) state === 'school' ? ACTIONS.quit() : ACTIONS.school();
+    else if (['school', 'intro', 'result'].includes(state) && (ev === 'Escape' || ev === 'pad1')) ACTIONS.quit();
     else menuNav(ev);
   }
   events.length = 0;
@@ -279,11 +299,12 @@ function frame(now) {
     (!audioReady() ? '  |  🔇 click or press a key for sound' : settings.mute ? '  |  🔇 muted (N)' : '');
   if (state === 'test') updateControllerTest();
 
-  const alt = drone.pos.y - world.groundAt(drone.pos.x, drone.pos.z) - 0.15;
-  const home = Math.hypot(drone.pos.x - SPAWN.x, drone.pos.z - SPAWN.z);
+  const alt = curAlt = drone.pos.y - world.groundAt(drone.pos.x, drone.pos.z) - 0.15;
+  const home = Math.hypot(drone.pos.x, drone.pos.z);
   crashStatic = Math.max(0, crashStatic - dt * 1.2);
   armHint = Math.max(0, armHint - dt);
   if (flashT > 0 && (flashT -= dt) <= 0 && !drone.crashed) $('msg').classList.add('hidden');
+  if ((hintT -= dt) <= 0) $('lessonHint').textContent = '';
   const noise = signalNoise(alt, home);
 
   if (state === 'fly' && replay) {
@@ -301,10 +322,16 @@ function frame(now) {
     if (history.length > 400) history.shift();
     if (drone.crashed) {
       crashes++; crashSound(); crashStatic = 1;
-      $('msg').textContent = `CRASH #${crashes} (${drone.crashed})  -  slow-mo replay, A to skip`;
-      $('msg').classList.remove('hidden');
-      startReplay();
-    } else if (mission) updateLesson(dt, alt);
+      mission.onCrash?.(ctx);
+      if (state === 'fly') {
+        $('msg').textContent = `CRASH #${crashes} (${drone.crashed})  -  slow-mo replay, A to skip`;
+        $('msg').classList.remove('hidden');
+        startReplay();
+      }
+    } else {
+      mission.update(ctx, dt);
+      if (restartPending) { restartPending = false; respawn(); }
+    }
   }
   if (state === 'fly') {
     if (settings.osd) {
@@ -313,6 +340,9 @@ function frame(now) {
     }
     $('osd').classList.toggle('hidden', !settings.osd || !!replay);
     $('horizon').classList.toggle('hidden', settings.chase);
+    // live stick diagram in the mission panel
+    $('lDotL').style.left = 50 + 42 * sticks.yaw + '%'; $('lDotL').style.top = 50 - 42 * sticks.throttle + '%';
+    $('lDotR').style.left = 50 + 42 * sticks.roll + '%'; $('lDotR').style.top = 50 - 42 * sticks.pitch + '%';
   }
   updateAudio(state === 'fly' && !replay ? drone : null);
   world.update(drone.pos.x, drone.pos.z);
@@ -320,6 +350,10 @@ function frame(now) {
   video.render(scene, camera, { analog: settings.video, amount: settings.videoAmount, noise, fisheye: settings.fisheye });
 }
 
+// Shared race link? (?seed=123&time=45.6)  -> open that race with the friend's time to beat
+const q = new URLSearchParams(location.search);
+applyWorld(mission.world);
 respawn();
 setState('menu');
+if (q.get('seed')) openMode(raceMode(+q.get('seed'), { daily: q.get('daily') === '1', rival: +q.get('time') || null }));
 requestAnimationFrame(frame);

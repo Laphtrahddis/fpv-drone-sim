@@ -34,6 +34,10 @@
   <h1>FPV DRONE SIM</h1>
   <button data-act="school">Flight School</button>
   <button data-act="fly">Free Flight</button>
+  <button data-act="gap">Gap Challenge</button>
+  <button data-act="race">Gate Race</button>
+  <button data-act="daily">Daily Challenge</button>
+  <button data-act="battery">Battery Challenge</button>
   <button data-act="settings">Settings</button>
   <button data-act="test">Controller Test</button>
   <p class="help">
@@ -61,19 +65,20 @@
   <button data-act="quit">Main Menu</button>
 </div>
 
-<div id="lessonIntro" class="overlay hidden">
+<div id="intro" class="overlay hidden">
   <h1 id="introTitle"></h1>
   <p id="introText" class="teach"></p>
-  <button data-act="lessonStart">Start lesson</button>
-  <button data-act="school">All lessons</button>
+  <button data-act="start">Start</button>
+  <button data-act="quit">Main Menu</button>
 </div>
 
-<div id="lessonDone" class="overlay hidden">
-  <h1>LESSON COMPLETE ✓</h1>
-  <p id="doneText" class="teach"></p>
-  <button data-act="lessonNext">Next lesson</button>
-  <button data-act="lessonStart">Fly it again</button>
-  <button data-act="school">All lessons</button>
+<div id="result" class="overlay hidden">
+  <h1 id="resultTitle"></h1>
+  <p id="resultText" class="teach"></p>
+  <button id="nextBtn" data-act="next">Next lesson</button>
+  <button data-act="again">Fly it again</button>
+  <button id="shareBtn" data-act="share">Copy share link</button>
+  <button data-act="quit">Main Menu</button>
 </div>
 
 <div id="settings" class="overlay hidden">
