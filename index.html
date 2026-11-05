@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FPV Drone Sim</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js",
+  "simplex-noise": "https://cdn.jsdelivr.net/npm/simplex-noise@4.0.3/dist/esm/simplex-noise.js"
+} }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud" class="hidden"></div>
+<div id="msg" class="hidden"></div>
+<div id="padStatus"></div>
+
+<div id="menu" class="overlay">
+  <h1>FPV DRONE SIM</h1>
+  <button data-act="fly">Free Flight</button>
+  <button data-act="test">Controller Test</button>
+  <p class="help">
+    <b>Gamepad (Mode 2):</b> left stick = throttle + yaw, right stick = pitch + roll<br>
+    A = reset &nbsp; Y = chase cam &nbsp; START = menu<br>
+    <b>Keyboard:</b> W/S throttle &nbsp; A/D yaw &nbsp; arrows pitch/roll<br>
+    R reset &nbsp; C chase cam &nbsp; Esc/P menu
+  </p>
+</div>
+
+<div id="pause" class="overlay hidden">
+  <h1>PAUSED</h1>
+  <button data-act="resume">Resume</button>
+  <button data-act="restart">Restart</button>
+  <button data-act="test">Controller Test</button>
+  <button data-act="quit">Main Menu</button>
+</div>
+
+<div id="test" class="overlay hidden">
+  <h1>CONTROLLER TEST</h1>
+  <p id="testStatus"></p>
+  <div class="sticks">
+    <div><div class="stick"><i id="dotL"></i></div>LEFT: throttle ↕ yaw ↔</div>
+    <div><div class="stick"><i id="dotR"></i></div>RIGHT: pitch ↕ roll ↔</div>
+  </div>
+  <table id="channels"></table>
+  <p>Throttle mapping: <button id="thrMode" class="small"></button></p>
+  <p class="help">Each channel should move the right way: throttle/pitch go + when pushed UP,
+    yaw/roll go + when pushed RIGHT. If not, click <b>Detect</b> and follow the prompt.</p>
+  <h3>Raw axes</h3><div id="rawAxes"></div>
+  <h3>Raw buttons</h3><div id="rawBtns"></div>
+  <button data-act="back">Back</button>
+</div>
+
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>
