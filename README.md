@@ -21,6 +21,7 @@ No wrangler or API tokens are needed.
 | Reset | A | R |
 | Angle / Acro | X | M |
 | Chase cam | Y | C |
+| Mute | | N |
 | Menu | START | Esc / P |
 
 Use **Controller Test** in the menu to check that your sticks are mapped correctly.
@@ -30,6 +31,7 @@ Use **Controller Test** in the menu to check that your sticks are mapped correct
 - `js/input.js`: gamepad + keyboard → 4 channels (deadzone, expo, invert)
 - `js/drone.js`: quadcopter physics (Angle + Acro, Betaflight-style rates)
 - `js/world.js`: noise terrain + trees, collision
+- `js/audio.js`: synthesized motor / prop / wind / crash sound (Web Audio)
 - `js/controllerTest.js`: calibration screen
 - `js/main.js`: scene, loop, camera, menus
 

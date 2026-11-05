@@ -4,7 +4,12 @@ import { settings, saveSettings } from './config.js';
 import { sticks, pad, events, updateInput, resetInput } from './input.js';
 import { Drone } from './drone.js';
 import { World } from './world.js';
-import { updateControllerTest, isDetecting } from './controllerTest.js';
+import { updateControllerTest } from './controllerTest.js';
+import { initAudio, updateAudio, crashSound, audioReady } from './audio.js';
+
+// audio may only start after a user gesture
+addEventListener('pointerdown', initAudio);
+addEventListener('keydown', initAudio);
 
 const $ = id => document.getElementById(id);
 const DEG = Math.PI / 180;
@@ -92,6 +97,8 @@ function menuNav(ev) {
 
 function handleEvents() {
   for (const ev of events) {
+    if (ev.startsWith('pad')) initAudio(); // some browsers accept gamepad presses as a gesture
+    if (ev === 'KeyN') { settings.mute = !settings.mute; saveSettings(); }
     if (state === 'fly') {
       if (ev === 'KeyR' || ev === 'pad0') respawn();
       if (ev === 'Escape' || ev === 'KeyP' || ev === 'pad9') setState('pause');
@@ -157,18 +164,20 @@ function frame(now) {
 
   updateInput(dt);
   handleEvents();
-  $('padStatus').textContent = pad.connected ? '🎮 controller connected' : '🎮 press any button on your controller';
+  $('padStatus').textContent = (pad.connected ? '🎮 controller connected' : '🎮 press any button on your controller') +
+    (!audioReady() ? '  |  🔇 click or press a key for sound' : settings.mute ? '  |  🔇 muted (N)' : '');
   if (state === 'test') updateControllerTest();
 
   if (state === 'fly') {
     acc += dt;
     while (acc >= STEP) { drone.step(STEP, sticks, world); acc -= STEP; }
     if (drone.crashed) {
-      if (!crashTimer) { $('msg').textContent = `CRASHED (${drone.crashed})  -  press A / R`; $('msg').classList.remove('hidden'); }
+      if (!crashTimer) { crashSound(); $('msg').textContent = `CRASHED (${drone.crashed})  -  press A / R`; $('msg').classList.remove('hidden'); }
       if ((crashTimer += dt) > 2.5) respawn();
     }
     updateHud(dt);
   }
+  updateAudio(state === 'fly' ? drone : null);
   world.update(drone.pos.x, drone.pos.z);
   updateCamera(dt);
   renderer.render(scene, camera);

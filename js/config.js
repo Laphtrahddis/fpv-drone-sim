@@ -19,6 +19,8 @@ const defaults = {
   uptilt: 25,                      // camera uptilt, degrees
   fov: 115,                        // horizontal field of view, degrees
   chase: false,
+  volume: 0.7,
+  mute: false,
 };
 
 function load() {
